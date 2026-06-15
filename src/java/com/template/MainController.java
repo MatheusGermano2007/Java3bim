@@ -35,7 +35,22 @@ public class MainController implements Initializable {
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        // 1. Configura as colunas da Tabela
+
+
+        // 1. Textos de dica (Prompt Texts) invisíveis que guiam o usuário
+        if (txtSearch != null) txtSearch.setPromptText("🔍 Pesquisar por nome ou criador...");
+        if (txtNome != null) txtNome.setPromptText("Ex: Java");
+        if (txtCriador != null) txtCriador.setPromptText("Ex: James Gosling");
+        if (txtAno != null) txtAno.setPromptText("Ex: 1995");
+        if (comboTipo != null) comboTipo.setPromptText("Selecione um tipo...");
+
+        // 2. Estado Vazio (Placeholder) para a Tabela
+        Label avisoTabelaVazia = new Label("Nenhuma linguagem encontrada.");
+
+        avisoTabelaVazia.setStyle("-fx-text-fill: #a0a0a0; -fx-font-size: 14px; -fx-font-style: italic;");
+        tableView.setPlaceholder(avisoTabelaVazia);
+
+
         colNome.setCellValueFactory(new PropertyValueFactory<>("nome"));
         colCriador.setCellValueFactory(new PropertyValueFactory<>("criador"));
         colTipo.setCellValueFactory(new PropertyValueFactory<>("tipo"));
@@ -43,7 +58,7 @@ public class MainController implements Initializable {
 
         recarregarTabela(); // Carrega os dados do banco
 
-        // 2. Configura a ação de clique na tabela (Habilita Atualizar e Excluir)
+
         tableView.getSelectionModel().selectedItemProperty().addListener((obs, selecaoAntiga, novaSelecao) -> {
             boolean temSelecao = (novaSelecao != null);
             btnUpdate.setDisable(!temSelecao);
@@ -57,10 +72,10 @@ public class MainController implements Initializable {
             }
         });
 
-        // 3. Preenche as opções do ComboBox (Tipo)
+
         comboTipo.getItems().addAll("Orientado a Objetos", "Funcional", "Backend", "Frontend");
 
-        // 4. Configura os bloqueios dos botões Salvar e Limpar
+
         if (btnSave != null) btnSave.setDisable(true);
         if (btnClear != null) btnClear.setDisable(true);
 
@@ -88,6 +103,11 @@ public class MainController implements Initializable {
                 recarregarTabela();
             });
         }
+        javafx.application.Platform.runLater(() -> {
+            if (txtNome != null) {
+                txtNome.requestFocus();
+            }
+        });
     }
     // UX 3: Método para exibir mensagens dinâmicas de feedback na barra inferior
     private void mostrarMensagem(String texto, boolean isSucesso) {
@@ -118,7 +138,7 @@ public class MainController implements Initializable {
             return; // Para a execução se o cara digitar letras no ano
         }
 
-        // 2. SEGUNDO: Agora sim mandamos salvar no banco de dados!
+        // salvar no banco de dados!
         try {
             LinguagemDAO dao = new LinguagemDAO();
 
@@ -169,10 +189,61 @@ public class MainController implements Initializable {
     @FXML
     public void acaoAtualizar() {
         LinguagemDTO selecionada = tableView.getSelectionModel().getSelectedItem();
+
         if (selecionada != null) {
-            // Lógica de atualização aqui
-            mostrarMensagem("Linguagem atualizada com sucesso!", true);
-            tableView.getSelectionModel().clearSelection();
+
+            // 1. Pega os textos atuais que estão na tela
+            String nomeTela = txtNome.getText().trim();
+            String criadorTela = txtCriador.getText().trim();
+            String tipoTela = comboTipo.getValue();
+            int anoTela;
+
+            try {
+                anoTela = Integer.parseInt(txtAno.getText().trim());
+            } catch (NumberFormatException e) {
+                mostrarMensagem("Erro: O ano deve ser apenas números!", false);
+                return;
+            }
+
+            // 2. Compara se o que está na tela é IGUAL ao que já estava salvo no objeto
+            boolean semMudancas = nomeTela.equals(selecionada.getNome()) &&
+                    criadorTela.equals(selecionada.getCriador()) &&
+                    tipoTela.equals(selecionada.getTipo()) &&
+                    anoTela == selecionada.getAnoCriacao();
+
+            // Se nada mudou, avisa o usuário e para por aqui (não vai pro banco de dados)
+            if (semMudancas) {
+                mostrarMensagem("Nenhuma alteração foi feita.", false);
+                return;
+            }
+
+            // 3. Se passou pela verificação acima, é porque algo mudou! Atualiza o DTO:
+            selecionada.setNome(nomeTela);
+            selecionada.setCriador(criadorTela);
+            selecionada.setTipo(tipoTela);
+            selecionada.setAnoCriacao(anoTela);
+
+            // 4. Manda pro banco de dados
+            try {
+                LinguagemDAO dao = new LinguagemDAO();
+                dao.atualizarLinguagem(selecionada);
+
+                recarregarTabela();
+                limparCampos();
+                tableView.refresh();
+
+                mostrarMensagem("Linguagem atualizada com sucesso!", true);
+
+                // Desabilita os botões de novo e tira a seleção da tabela
+                tableView.getSelectionModel().clearSelection();
+                btnUpdate.setDisable(true);
+                btnDelete.setDisable(true);
+
+            } catch (Exception e) {
+                mostrarMensagem("Erro ao atualizar: " + e.getMessage(), false);
+            }
+        } else {
+            mostrarMensagem("Selecione uma linguagem para atualizar.", false);
         }
     }
 
@@ -182,9 +253,15 @@ public class MainController implements Initializable {
         txtCriador.clear();
         comboTipo.getSelectionModel().clearSelection();
         txtAno.clear();
-        txtNome.requestFocus(); // Volta o ponteiro do teclado para o primeiro campo
+
+        // Remove a marcação da tabela e trava os botões novamente!
+        tableView.getSelectionModel().clearSelection();
+        if (btnUpdate != null) btnUpdate.setDisable(true);
+        if (btnDelete != null) btnDelete.setDisable(true);
+
+        txtNome.requestFocus();
         mostrarMensagem("Campos limpos. Sistema pronto.", true);
-        lblMensagem.setStyle("-fx-text-fill: #888;"); // Volta para cor neutra
+        lblMensagem.setStyle("-fx-text-fill: #888;");
     }
 
     private void recarregarTabela() {
@@ -192,7 +269,7 @@ public class MainController implements Initializable {
             LinguagemDAO dao = new LinguagemDAO();
             List<LinguagemDTO> listaBanco = dao.listarLinguagens();
 
-            // LÓGICA DO FILTRO
+            // filtro
             String busca = txtSearch.getText().toLowerCase(); // Pega o texto e deixa minúsculo
             List<LinguagemDTO> listaFiltrada = new java.util.ArrayList<>();
 
