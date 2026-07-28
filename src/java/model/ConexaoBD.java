@@ -1,4 +1,4 @@
-package com.template;
+package model;
 
 import java.sql.Connection;    // Objeto que mantém a conexão aberta com o banco
 import java.sql.DriverManager; // Gerenciador que faz a ligação

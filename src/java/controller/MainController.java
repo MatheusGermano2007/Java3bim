@@ -1,6 +1,6 @@
-package com.template;
-import javafx.scene.control.cell.PropertyValueFactory;
+package controller;
 
+import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.control.*;
@@ -9,6 +9,7 @@ import model.dto.LinguagemDTO;
 import java.util.List;
 import java.net.URL;
 import java.util.ResourceBundle;
+import util.DialogUtil;
 
 public class MainController implements Initializable {
 
@@ -124,34 +125,30 @@ public class MainController implements Initializable {
 
     @FXML
     private void acaoSalvar() {
-        // 1. PRIMEIRO: Criamos a variável 'dto' e preenchemos ela com os dados da tela
         LinguagemDTO dto = new LinguagemDTO();
         dto.setNome(txtNome.getText());
         dto.setCriador(txtCriador.getText());
         dto.setTipo(comboTipo.getValue());
 
-        // Lembra da conversão para número que fizemos lá atrás? Ela entra aqui!
         try {
             dto.setAnoCriacao(Integer.parseInt(txtAno.getText()));
         } catch (NumberFormatException e) {
-            mostrarMensagem("Erro: O ano deve ser apenas números!", false);
-            return; // Para a execução se o cara digitar letras no ano
+            // Usa o modal de erro para avisar o usuário
+            DialogUtil.showError("O ano deve conter apenas números!");
+            return;
         }
 
-        // salvar no banco de dados!
         try {
             LinguagemDAO dao = new LinguagemDAO();
-
-            // Agora o Java sabe quem é o 'dto', pois criamos ele ali em cima!
             dao.cadastrarLinguagem(dto);
 
-            recarregarTabela(); // Atualiza a tabela na mesma hora
-            limparCampos();     // Limpa a tela
+            recarregarTabela();
+            limparCampos();
 
-            mostrarMensagem("Linguagem salva com sucesso!", true);
+            // Usa o modal de informação para avisar do sucesso
+            DialogUtil.showInfo("Linguagem salva com sucesso!");
         } catch (Exception e) {
-            e.printStackTrace();
-            mostrarMensagem("Erro ao salvar: " + e.getMessage(), false);
+            DialogUtil.showError("Erro ao salvar no banco de dados: " + e.getMessage());
         }
     }
 

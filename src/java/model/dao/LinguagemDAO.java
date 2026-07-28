@@ -1,6 +1,6 @@
 package model.dao;
 
-import com.template.ConexaoBD;
+import model.ConexaoBD;
 import model.dto.LinguagemDTO;
 
 import java.sql.Connection;
