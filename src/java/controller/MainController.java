@@ -10,7 +10,9 @@ import java.util.List;
 import java.net.URL;
 import java.util.ResourceBundle;
 import util.DialogUtil;
+import util.LinguagemValidador;
 
+// Controller da tela principal: conecta o FXML à lógica e ao banco de dados
 public class MainController implements Initializable {
 
     // Componentes do FXML exatos como estão no seu layout
@@ -34,24 +36,25 @@ public class MainController implements Initializable {
 
     @FXML private Label lblMensagem;
 
+    // Configuração inicial da tela, chamada automaticamente ao carregar o FXML
     @Override
     public void initialize(URL location, ResourceBundle resources) {
 
 
-        // 1. Textos de dica (Prompt Texts) invisíveis que guiam o usuário
+        // 1. Textos de dica invisíveis que guiam o usuário
         if (txtSearch != null) txtSearch.setPromptText("🔍 Pesquisar por nome ou criador...");
         if (txtNome != null) txtNome.setPromptText("Ex: Java");
         if (txtCriador != null) txtCriador.setPromptText("Ex: James Gosling");
         if (txtAno != null) txtAno.setPromptText("Ex: 1995");
         if (comboTipo != null) comboTipo.setPromptText("Selecione um tipo...");
 
-        // 2. Estado Vazio (Placeholder) para a Tabela
+        // 2. Estado Vazio para a Tabela
         Label avisoTabelaVazia = new Label("Nenhuma linguagem encontrada.");
 
         avisoTabelaVazia.setStyle("-fx-text-fill: #a0a0a0; -fx-font-size: 14px; -fx-font-style: italic;");
         tableView.setPlaceholder(avisoTabelaVazia);
 
-
+        // Liga as colunas da tabela aos atributos do DTO
         colNome.setCellValueFactory(new PropertyValueFactory<>("nome"));
         colCriador.setCellValueFactory(new PropertyValueFactory<>("criador"));
         colTipo.setCellValueFactory(new PropertyValueFactory<>("tipo"));
@@ -59,7 +62,7 @@ public class MainController implements Initializable {
 
         recarregarTabela(); // Carrega os dados do banco
 
-
+        // Ao selecionar uma linha, preenche o formulário e libera Atualizar/Excluir
         tableView.getSelectionModel().selectedItemProperty().addListener((obs, selecaoAntiga, novaSelecao) -> {
             boolean temSelecao = (novaSelecao != null);
             btnUpdate.setDisable(!temSelecao);
@@ -73,21 +76,18 @@ public class MainController implements Initializable {
             }
         });
 
-
         comboTipo.getItems().addAll("Orientado a Objetos", "Funcional", "Backend", "Frontend");
-
 
         if (btnSave != null) btnSave.setDisable(true);
         if (btnClear != null) btnClear.setDisable(true);
 
+        // Validação em tempo real dos campos, via LinguagemValidador
         javafx.beans.value.ChangeListener<String> validador = (obs, antigo, novo) -> {
-            boolean algumCampoVazio = txtNome.getText().trim().isEmpty() ||
-                    txtCriador.getText().trim().isEmpty() ||
-                    txtAno.getText().trim().isEmpty();
+            boolean algumCampoVazio = LinguagemValidador.algumCampoVazio(
+                    txtNome.getText(), txtCriador.getText(), txtAno.getText());
 
-            boolean tudoVazio = txtNome.getText().trim().isEmpty() &&
-                    txtCriador.getText().trim().isEmpty() &&
-                    txtAno.getText().trim().isEmpty();
+            boolean tudoVazio = LinguagemValidador.todosCamposVazios(
+                    txtNome.getText(), txtCriador.getText(), txtAno.getText());
 
             if (btnSave != null) btnSave.setDisable(algumCampoVazio);
             if (btnClear != null) btnClear.setDisable(tudoVazio);
@@ -123,6 +123,7 @@ public class MainController implements Initializable {
         }
     }
 
+    // Cadastra uma nova linguagem
     @FXML
     private void acaoSalvar() {
         LinguagemDTO dto = new LinguagemDTO();
@@ -130,13 +131,12 @@ public class MainController implements Initializable {
         dto.setCriador(txtCriador.getText());
         dto.setTipo(comboTipo.getValue());
 
-        try {
-            dto.setAnoCriacao(Integer.parseInt(txtAno.getText()));
-        } catch (NumberFormatException e) {
-            // Usa o modal de erro para avisar o usuário
+        Integer ano = LinguagemValidador.converterAno(txtAno.getText());
+        if (ano == null) {
             DialogUtil.showError("O ano deve conter apenas números!");
             return;
         }
+        dto.setAnoCriacao(ano);
 
         try {
             LinguagemDAO dao = new LinguagemDAO();
@@ -152,6 +152,7 @@ public class MainController implements Initializable {
         }
     }
 
+    // Exclui a linguagem selecionada, com confirmação
     @FXML
     private void acaoExcluir() {
         LinguagemDTO selecionada = tableView.getSelectionModel().getSelectedItem();
@@ -183,6 +184,7 @@ public class MainController implements Initializable {
         }
     }
 
+    // Atualiza a linguagem selecionada, se houver mudanças reais
     @FXML
     public void acaoAtualizar() {
         LinguagemDTO selecionada = tableView.getSelectionModel().getSelectedItem();
@@ -193,20 +195,16 @@ public class MainController implements Initializable {
             String nomeTela = txtNome.getText().trim();
             String criadorTela = txtCriador.getText().trim();
             String tipoTela = comboTipo.getValue();
-            int anoTela;
 
-            try {
-                anoTela = Integer.parseInt(txtAno.getText().trim());
-            } catch (NumberFormatException e) {
+            Integer anoTela = LinguagemValidador.converterAno(txtAno.getText());
+            if (anoTela == null) {
                 mostrarMensagem("Erro: O ano deve ser apenas números!", false);
                 return;
             }
 
-            // 2. Compara se o que está na tela é IGUAL ao que já estava salvo no objeto
-            boolean semMudancas = nomeTela.equals(selecionada.getNome()) &&
-                    criadorTela.equals(selecionada.getCriador()) &&
-                    tipoTela.equals(selecionada.getTipo()) &&
-                    anoTela == selecionada.getAnoCriacao();
+            // 2. Verifica se algo realmente mudou antes de ir ao banco
+            boolean semMudancas = LinguagemValidador.semAlteracoes(
+                    selecionada, nomeTela, criadorTela, tipoTela, anoTela);
 
             // Se nada mudou, avisa o usuário e para por aqui (não vai pro banco de dados)
             if (semMudancas) {
@@ -244,6 +242,7 @@ public class MainController implements Initializable {
         }
     }
 
+    // Reseta o formulário e a seleção da tabela
     @FXML
     public void limparCampos() {
         txtNome.clear();
@@ -261,6 +260,7 @@ public class MainController implements Initializable {
         lblMensagem.setStyle("-fx-text-fill: #888;");
     }
 
+    // Busca todos os registros e filtra pela barra de pesquisa
     private void recarregarTabela() {
         try {
             LinguagemDAO dao = new LinguagemDAO();
