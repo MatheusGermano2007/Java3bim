@@ -8,6 +8,7 @@ import model.dto.LinguagemDTO;
 import service.LinguagemService;
 import java.net.URL;
 import java.util.ResourceBundle;
+import util.validation.LinguagemValidador;
 
 public class MainController implements Initializable {
 
@@ -31,8 +32,15 @@ public class MainController implements Initializable {
 
     @FXML
     private void acaoSalvar() {
-        if (service.acaoSalvar(txtNome, txtCriador, comboTipo, txtAno, lblMensagem)) {
-            posAcao();
+        // 1. O Controller chama o Validador
+        LinguagemValidador validador = new LinguagemValidador();
+        boolean dadosValidos = validador.validarCadastro(txtNome.getText(), txtCriador.getText(), txtAno.getText());
+
+        // 2. Só chama o Service para salvar se os dados estiverem válidos
+        if (dadosValidos) {
+            if (service.acaoSalvar(txtNome, txtCriador, comboTipo, txtAno, lblMensagem)) {
+                posAcao();
+            }
         }
     }
 

@@ -7,8 +7,13 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import model.dao.LinguagemDAO;
 import model.dto.LinguagemDTO;
 import util.DialogUtil;
-import util.LinguagemValidador;
+import util.validation.AnoNumericoValidador;
+import util.validation.CampoObrigatorioValidador;
+import util.validation.Validador;
+
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public class LinguagemService {
 
@@ -31,7 +36,7 @@ public class LinguagemService {
             boolean tem = sel != null;
             bUpd.setDisable(!tem);
             bDel.setDisable(!tem);
-            bSave.setDisable(tem); // Trava o botão salvar no modo edição
+            bSave.setDisable(tem);
 
             if (tem) {
                 tNome.setText(sel.getNome());
@@ -41,15 +46,22 @@ public class LinguagemService {
             }
         });
 
-        javafx.beans.value.ChangeListener<String> validador = (obs, old, novo) -> {
-            boolean algumVazio = LinguagemValidador.algumCampoVazio(tNome.getText(), tCriador.getText(), tAno.getText());
+        // Validador em tempo real usando as classes OCP do professor
+        javafx.beans.value.ChangeListener<String> validadorUI = (obs, old, novo) -> {
+            boolean nomeValido = new CampoObrigatorioValidador("Nome", tNome.getText()).validar(tNome.getText());
+            boolean criadorValido = new CampoObrigatorioValidador("Criador", tCriador.getText()).validar(tCriador.getText());
+            boolean anoValido = new CampoObrigatorioValidador("Ano", tAno.getText()).validar(tAno.getText());
+
+            boolean formInvalido = !(nomeValido && criadorValido && anoValido);
             boolean temSelecaoNaTabela = table.getSelectionModel().getSelectedItem() != null;
 
-            bSave.setDisable(algumVazio || temSelecaoNaTabela);
-            bClear.setDisable(LinguagemValidador.todosCamposVazios(tNome.getText(), tCriador.getText(), tAno.getText()));
+            bSave.setDisable(formInvalido || temSelecaoNaTabela);
+
+            boolean tudoVazio = tNome.getText().isEmpty() && tCriador.getText().isEmpty() && tAno.getText().isEmpty();
+            bClear.setDisable(tudoVazio);
         };
 
-        Arrays.asList(tNome, tCriador, tAno).forEach(txt -> txt.textProperty().addListener(validador));
+        Arrays.asList(tNome, tCriador, tAno).forEach(txt -> txt.textProperty().addListener(validadorUI));
         if (tSearch != null) tSearch.textProperty().addListener((obs, old, novo) -> recarregarTabela(table, tSearch, lTotal));
     }
 
@@ -75,33 +87,73 @@ public class LinguagemService {
     // --- AÇÕES PRINCIPAIS (BANCO + TELA) ---
 
     public boolean acaoSalvar(TextField tNome, TextField tCriador, ComboBox<String> combo, TextField tAno, Label lMsg) {
+
+        // Chama exatamente a classe que acabamos de criar acima
+        LinguagemValidador validador = new LinguagemValidador();
+
+        // Se esbarrar em campo vazio ou ano com letras, ele já para aqui
+        if (!validador.validarCadastro(tNome.getText(), tCriador.getText(), tAno.getText())) {
+            return false;
+        }
+
+        // Se passou, salva no banco de dados!
         try {
-            dao.cadastrarLinguagem(new LinguagemDTO(tNome.getText(), tCriador.getText(), combo.getValue(), validarAno(tAno.getText())));
+            Integer ano = Integer.parseInt(tAno.getText());
+            dao.cadastrarLinguagem(new LinguagemDTO(tNome.getText(), tCriador.getText(), combo.getValue(), ano));
+
             DialogUtil.showInfo("Salvo com sucesso!");
             atualizarLabel(lMsg, "Linguagem salva!", "#00ff00", true);
             return true;
         } catch (Exception e) {
-            DialogUtil.showError(e instanceof IllegalArgumentException ? e.getMessage() : "Erro: " + e.getMessage());
+            DialogUtil.showError("Erro: " + e.getMessage());
             return false;
         }
     }
 
     public boolean acaoAtualizar(TableView<LinguagemDTO> table, TextField tNome, TextField tCriador, ComboBox<String> combo, TextField tAno, Label lMsg) {
-        try {
-            LinguagemDTO dto = table.getSelectionModel().getSelectedItem();
-            if (dto == null) throw new IllegalArgumentException("Nenhum item selecionado.");
-            Integer ano = validarAno(tAno.getText());
+        LinguagemDTO dto = table.getSelectionModel().getSelectedItem();
+        if (dto == null) {
+            atualizarLabel(lMsg, "Nenhum item selecionado.", "#ff4c4c", true);
+            return false;
+        }
 
-            if (LinguagemValidador.semAlteracoes(dto, tNome.getText(), tCriador.getText(), combo.getValue(), ano)) {
-                throw new IllegalArgumentException("Nenhuma alteração feita.");
+        // Padrão do Professor: Construindo a lista de validadores para atualizar também
+        List<Validador<String>> validadores = new ArrayList<>();
+        validadores.add(new CampoObrigatorioValidador("Nome", tNome.getText()));
+        validadores.add(new CampoObrigatorioValidador("Criador", tCriador.getText()));
+        validadores.add(new CampoObrigatorioValidador("Ano", tAno.getText()));
+        validadores.add(new AnoNumericoValidador(tAno.getText()));
+
+        for (Validador<String> validador : validadores) {
+            if (!validador.validar(validador.getValor())) {
+                atualizarLabel(lMsg, validador.getMensagemErro(), "#ff4c4c", true);
+                return false;
+            }
+        }
+
+        try {
+            Integer ano = Integer.parseInt(tAno.getText());
+
+            // Verifica se algo foi alterado de fato
+            if (dto.getNome().equals(tNome.getText()) &&
+                    dto.getCriador().equals(tCriador.getText()) &&
+                    dto.getTipo().equals(combo.getValue()) &&
+                    dto.getAnoCriacao() == ano) {
+
+                atualizarLabel(lMsg, "Nenhuma alteração feita.", "#ff4c4c", true);
+                return false;
             }
 
-            dto.setNome(tNome.getText()); dto.setCriador(tCriador.getText()); dto.setTipo(combo.getValue()); dto.setAnoCriacao(ano);
+            dto.setNome(tNome.getText());
+            dto.setCriador(tCriador.getText());
+            dto.setTipo(combo.getValue());
+            dto.setAnoCriacao(ano);
+
             dao.atualizarLinguagem(dto);
             atualizarLabel(lMsg, "Atualizado com sucesso!", "#00ff00", true);
             return true;
         } catch (Exception e) {
-            atualizarLabel(lMsg, e.getMessage(), "#ff4c4c", true);
+            atualizarLabel(lMsg, "Erro: " + e.getMessage(), "#ff4c4c", true);
             return false;
         }
     }
@@ -119,14 +171,6 @@ public class LinguagemService {
             }
         }
         return false;
-    }
-
-    // --- UTILITÁRIOS INTERNOS ---
-
-    private Integer validarAno(String anoTxt) {
-        Integer ano = LinguagemValidador.converterAno(anoTxt);
-        if (ano == null) throw new IllegalArgumentException("O ano deve ser numérico.");
-        return ano;
     }
 
     private void atualizarLabel(Label lbl, String txt, String cor, boolean bold) {
