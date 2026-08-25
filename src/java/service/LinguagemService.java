@@ -7,13 +7,10 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import model.dao.LinguagemDAO;
 import model.dto.LinguagemDTO;
 import util.DialogUtil;
-import util.validation.AnoNumericoValidador;
 import util.validation.CampoObrigatorioValidador;
-import util.validation.Validador;
+import util.validation.LinguagemValidador;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 public class LinguagemService {
 
@@ -46,7 +43,7 @@ public class LinguagemService {
             }
         });
 
-        // Validador em tempo real usando as classes OCP do professor
+        // Validador em tempo real da interface
         javafx.beans.value.ChangeListener<String> validadorUI = (obs, old, novo) -> {
             boolean nomeValido = new CampoObrigatorioValidador("Nome", tNome.getText()).validar(tNome.getText());
             boolean criadorValido = new CampoObrigatorioValidador("Criador", tCriador.getText()).validar(tCriador.getText());
@@ -88,15 +85,12 @@ public class LinguagemService {
 
     public boolean acaoSalvar(TextField tNome, TextField tCriador, ComboBox<String> combo, TextField tAno, Label lMsg) {
 
-        // Chama exatamente a classe que acabamos de criar acima
         LinguagemValidador validador = new LinguagemValidador();
 
-        // Se esbarrar em campo vazio ou ano com letras, ele já para aqui
         if (!validador.validarCadastro(tNome.getText(), tCriador.getText(), tAno.getText())) {
             return false;
         }
 
-        // Se passou, salva no banco de dados!
         try {
             Integer ano = Integer.parseInt(tAno.getText());
             dao.cadastrarLinguagem(new LinguagemDTO(tNome.getText(), tCriador.getText(), combo.getValue(), ano));
@@ -117,24 +111,16 @@ public class LinguagemService {
             return false;
         }
 
-        // Padrão do Professor: Construindo a lista de validadores para atualizar também
-        List<Validador<String>> validadores = new ArrayList<>();
-        validadores.add(new CampoObrigatorioValidador("Nome", tNome.getText()));
-        validadores.add(new CampoObrigatorioValidador("Criador", tCriador.getText()));
-        validadores.add(new CampoObrigatorioValidador("Ano", tAno.getText()));
-        validadores.add(new AnoNumericoValidador(tAno.getText()));
+        // AGORA SIM: Usando a mesma classe centralizadora para atualizar!
+        LinguagemValidador validador = new LinguagemValidador();
 
-        for (Validador<String> validador : validadores) {
-            if (!validador.validar(validador.getValor())) {
-                atualizarLabel(lMsg, validador.getMensagemErro(), "#ff4c4c", true);
-                return false;
-            }
+        if (!validador.validarCadastro(tNome.getText(), tCriador.getText(), tAno.getText())) {
+            return false;
         }
 
         try {
             Integer ano = Integer.parseInt(tAno.getText());
 
-            // Verifica se algo foi alterado de fato
             if (dto.getNome().equals(tNome.getText()) &&
                     dto.getCriador().equals(tCriador.getText()) &&
                     dto.getTipo().equals(combo.getValue()) &&
