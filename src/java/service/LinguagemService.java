@@ -8,16 +8,33 @@ import model.dao.LinguagemDAO;
 import model.dto.LinguagemDTO;
 import util.DialogUtil;
 import util.validation.CampoObrigatorioValidador;
+import util.validation.ILinguagemValidador;
 import util.validation.LinguagemValidador;
 
 import java.util.Arrays;
 
-public class LinguagemService {
+// Cérebro da aplicação: executa a regra de negócio e gerencia a UI do JavaFX
+public class LinguagemService implements ILinguagemService {
 
-    private final LinguagemDAO dao = new LinguagemDAO();
+    // Dependências mantidas via abstrações/DAO
+    private final LinguagemDAO dao;
+    private final ILinguagemValidador validador;
+
+    // Construtor padrão: usa as implementações reais do sistema
+    public LinguagemService() {
+        this(new LinguagemDAO(), new LinguagemValidador());
+    }
+
+    // Construtor para Injeção de Dependência (permite injetar Mocks para testes)
+    public LinguagemService(LinguagemDAO dao, ILinguagemValidador validador) {
+        this.dao = dao;
+        this.validador = validador;
+    }
 
     // --- CONFIGURAÇÕES VISUAIS DA TELA ---
 
+    // Mapeia as colunas da tabela nos atributos do DTO e popula o ComboBox
+    @Override
     public void inicializarTabela(TableView<LinguagemDTO> table, TableColumn<LinguagemDTO, String> cNome, TableColumn<LinguagemDTO, String> cCriador, TableColumn<LinguagemDTO, String> cTipo, TableColumn<LinguagemDTO, String> cAno, ComboBox<String> combo) {
         cNome.setCellValueFactory(new PropertyValueFactory<>("nome"));
         cCriador.setCellValueFactory(new PropertyValueFactory<>("criador"));
@@ -27,8 +44,11 @@ public class LinguagemService {
         table.setPlaceholder(new Label("Nenhuma linguagem encontrada"));
     }
 
+    // Escuta cliques na tabela e digitações para atualizar e ativar/desativar botões
+    @Override
     public void configurarEventos(TableView<LinguagemDTO> table, TextField tNome, TextField tCriador, ComboBox<String> combo, TextField tAno, Button bSave, Button bClear, Button bUpd, Button bDel, TextField tSearch, Label lTotal) {
 
+        // Preenche os campos do formulário ao clicar em uma linha da tabela
         table.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
             boolean tem = sel != null;
             bUpd.setDisable(!tem);
@@ -43,7 +63,7 @@ public class LinguagemService {
             }
         });
 
-        // Validador em tempo real da interface
+        // Libera ou bloqueia os botões Salvar/Limpar em tempo real enquanto o usuário digita
         javafx.beans.value.ChangeListener<String> validadorUI = (obs, old, novo) -> {
             boolean nomeValido = new CampoObrigatorioValidador("Nome", tNome.getText()).validar(tNome.getText());
             boolean criadorValido = new CampoObrigatorioValidador("Criador", tCriador.getText()).validar(tCriador.getText());
@@ -62,6 +82,8 @@ public class LinguagemService {
         if (tSearch != null) tSearch.textProperty().addListener((obs, old, novo) -> recarregarTabela(table, tSearch, lTotal));
     }
 
+    // Reseta as caixas de texto, desfaz seleções e restaura o estado padrão dos botões
+    @Override
     public void limparCamposVisuais(TextField tNome, TextField tCriador, TextField tAno, ComboBox<String> combo, TableView<LinguagemDTO> table, Button bSave, Button bClear, Label lMsg) {
         Arrays.asList(tNome, tCriador, tAno).forEach(TextInputControl::clear);
         if (combo != null) combo.getSelectionModel().clearSelection();
@@ -71,6 +93,8 @@ public class LinguagemService {
         atualizarLabel(lMsg, "Sistema pronto.", "#888", false);
     }
 
+    // Busca os dados via DAO e aplica o filtro da busca em tempo real
+    @Override
     public void recarregarTabela(TableView<LinguagemDTO> table, TextField tSearch, Label lTotal) {
         try {
             String termo = tSearch != null ? tSearch.getText().toLowerCase() : "";
@@ -83,9 +107,9 @@ public class LinguagemService {
 
     // --- AÇÕES PRINCIPAIS (BANCO + TELA) ---
 
+    // Valida as entradas, envia o novo registro para o DAO e atualiza o status na tela
+    @Override
     public boolean acaoSalvar(TextField tNome, TextField tCriador, ComboBox<String> combo, TextField tAno, Label lMsg) {
-
-        LinguagemValidador validador = new LinguagemValidador();
 
         if (!validador.validarCadastro(tNome.getText(), tCriador.getText(), tAno.getText())) {
             return false;
@@ -104,15 +128,14 @@ public class LinguagemService {
         }
     }
 
+    // Atualiza o item selecionado caso haja alterações válidas
+    @Override
     public boolean acaoAtualizar(TableView<LinguagemDTO> table, TextField tNome, TextField tCriador, ComboBox<String> combo, TextField tAno, Label lMsg) {
         LinguagemDTO dto = table.getSelectionModel().getSelectedItem();
         if (dto == null) {
             atualizarLabel(lMsg, "Nenhum item selecionado.", "#ff4c4c", true);
             return false;
         }
-
-        // AGORA SIM: Usando a mesma classe centralizadora para atualizar!
-        LinguagemValidador validador = new LinguagemValidador();
 
         if (!validador.validarCadastro(tNome.getText(), tCriador.getText(), tAno.getText())) {
             return false;
@@ -144,6 +167,8 @@ public class LinguagemService {
         }
     }
 
+    // Pede confirmação via alerta e manda o DAO remover do banco
+    @Override
     public boolean acaoExcluir(TableView<LinguagemDTO> table, Label lMsg) {
         LinguagemDTO sel = table.getSelectionModel().getSelectedItem();
         if (sel != null && DialogUtil.showConfirmation("Excluir", "Apagar " + sel.getNome() + " permanentemente?")) {
@@ -159,6 +184,7 @@ public class LinguagemService {
         return false;
     }
 
+    // Método auxiliar interno para formatar texto e cor das mensagens do sistema
     private void atualizarLabel(Label lbl, String txt, String cor, boolean bold) {
         if (lbl != null) { lbl.setText(txt); lbl.setStyle("-fx-text-fill: " + cor + ";" + (bold ? " -fx-font-weight: bold;" : "")); }
     }
